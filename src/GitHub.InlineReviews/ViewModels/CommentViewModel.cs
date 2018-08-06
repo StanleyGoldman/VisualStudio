@@ -5,6 +5,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using GitHub.Extensions;
+using GitHub.InlineReviews.Services;
 using GitHub.Logging;
 using GitHub.Models;
 using GitHub.ViewModels;
@@ -19,6 +20,7 @@ namespace GitHub.InlineReviews.ViewModels
     public class CommentViewModel : ReactiveObject, ICommentViewModel
     {
         static readonly ILogger log = LogManager.ForContext<CommentViewModel>();
+        ICommentService commentService;
         string body;
         string errorMessage;
         bool isReadOnly;
@@ -31,6 +33,7 @@ namespace GitHub.InlineReviews.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="CommentViewModel"/> class.
         /// </summary>
+        /// <param name="commentService">The comment service</param>
         /// <param name="thread">The thread that the comment is a part of.</param>
         /// <param name="currentUser">The current user.</param>
         /// <param name="pullRequestId">The pull request id of the comment.</param>
@@ -42,6 +45,7 @@ namespace GitHub.InlineReviews.ViewModels
         /// <param name="updatedAt">The modified date of the comment.</param>
         /// <param name="webUrl"></param>
         protected CommentViewModel(
+            ICommentService commentService,
             ICommentThreadViewModel thread,
             IActorViewModel currentUser,
             int pullRequestId,
@@ -53,6 +57,7 @@ namespace GitHub.InlineReviews.ViewModels
             DateTimeOffset updatedAt,
             Uri webUrl)
         {
+            this.commentService = commentService;
             Guard.ArgumentNotNull(thread, nameof(thread));
             Guard.ArgumentNotNull(currentUser, nameof(currentUser));
             Guard.ArgumentNotNull(author, nameof(author));
@@ -103,14 +108,17 @@ namespace GitHub.InlineReviews.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="CommentViewModel"/> class.
         /// </summary>
+        /// <param name="commentService">Comment Service</param>
         /// <param name="thread">The thread that the comment is a part of.</param>
         /// <param name="currentUser">The current user.</param>
         /// <param name="model">The comment model.</param>
         protected CommentViewModel(
+            ICommentService commentService,
             ICommentThreadViewModel thread,
             ActorModel currentUser,
             CommentModel model)
             : this(
+                  commentService,
                   thread, 
                   new ActorViewModel(currentUser),
                   model.PullRequestId, 
@@ -131,39 +139,24 @@ namespace GitHub.InlineReviews.ViewModels
 
         async Task DoDelete(object unused)
         {
-            var result = MessageBox.Show(
-                VisualStudio.UI.Resources.DeleteCommentConfirmation, 
-                VisualStudio.UI.Resources.DeleteCommentConfirmationCaption, 
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            switch(result)
+            if (commentService.ConfirmCommentDelete())
             {
-                case (MessageBoxResult.Yes):
+                try
                 {
-                    try
-                    {
-                        ErrorMessage = null;
-                        IsSubmitting = true;
+                    ErrorMessage = null;
+                    IsSubmitting = true;
 
-                        await Thread.DeleteComment.ExecuteAsyncTask(new Tuple<int, int>(PullRequestId, DatabaseId));
-                    }
-                    catch (Exception e)
-                    {
-                        var message = e.Message;
-                        ErrorMessage = message;
-                        log.Error(e, "Error Deleting comment");
-                    }
-                    finally
-                    {
-                        IsSubmitting = false;
-                    }
-                        break;
+                    await Thread.DeleteComment.ExecuteAsyncTask(new Tuple<int, int>(PullRequestId, DatabaseId));
                 }
-
-                case (MessageBoxResult.No):
+                catch (Exception e)
                 {
-                    break;
+                    var message = e.Message;
+                    ErrorMessage = message;
+                    log.Error(e, "Error Deleting comment");
+                }
+                finally
+                {
+                    IsSubmitting = false;
                 }
             }
         }
